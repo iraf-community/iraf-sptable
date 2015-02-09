@@ -1,0 +1,35 @@
+# SCOMBINE
+
+$call	relink
+$exit
+
+update:
+	$call	relink
+	$call	install
+	;
+
+relink:
+	$update	libpkg.a
+	$omake	x_xscombine.x
+	$link	x_xscombine.o libpkg.a -lsmw -ltbtables -lxtools -liminterp \
+	    -o xx_xscombine.e
+	;
+
+install:
+	$move	xx_xscombine.e spbin$x_xscombine.e
+	;
+
+
+libpkg.a:
+	@generic
+
+	icgdata.x	<smw.h> icombine.com icombine.h
+	iclog.x		<smw.h> icombine.com icombine.h <mach.h>
+	icombine.x	<smw.h> icombine.com <mach.h> icombine.h
+	icscale.x	<smw.h> icombine.com icombine.h <ctype.h> <error.h>\
+			<imhdr.h> <imset.h>
+	icstat.x	<smw.h> icombine.com icombine.h
+	icsum.x		icombine.com icombine.h
+	t_scombine.x	<smw.h> icombine.h icombine.com <error.h> <imhdr.h>\
+			<mach.h>
+	;

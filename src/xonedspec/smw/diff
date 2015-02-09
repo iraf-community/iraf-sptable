@@ -1,0 +1,11 @@
+check out file `libsmw.a = /iraf/iraf/extern/sptable/lib/libsmw.a'
+Subdirectory smw/sio is up to date
+xc -c -w -p sptable -p noao smwopenim.x
+smwopenim.x:
+   smw_openim:
+smwopenim.f:
+   smwopm:
+ar r /iraf/iraf/extern/sptable/lib/../bin/libsmw.a smwopenim.o
+ranlib /iraf/iraf/extern/sptable/lib/../bin/libsmw.a
+Updated 1 files in libsmw.a
+check file `libsmw.a' into `splib$'

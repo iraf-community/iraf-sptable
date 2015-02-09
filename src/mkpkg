@@ -1,0 +1,8 @@
+# Make the SPTABLE tasks.
+
+update:
+	$call update@mwcs 
+	$call smw@xonedspec
+	$call update@xonedspec
+	$call update@xrv
+	;

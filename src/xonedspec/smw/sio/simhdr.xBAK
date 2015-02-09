@@ -1,0 +1,32 @@
+include	<imhdr.h>
+include	<imio.h>
+
+
+# S_IMHDR -- Create a minimal IMIO pointer.
+
+pointer procedure s_imhdr (ndim, len_hdr)
+
+int	ndim			#I dimension
+int	len_hdr			#I length of user fields
+pointer	im			#O IMIO pointer 
+
+int	len_imhdr
+errchk	malloc
+
+begin
+	# Allocate buffer for descriptor.
+	len_imhdr = LEN_IMHDR + max (MIN_LENUSERAREA, len_hdr) / SZ_STRUCT
+	call malloc (im, LEN_IMDES + len_imhdr, TY_STRUCT)
+	call aclri (Memi[im], LEN_IMDES + min (len_imhdr, LEN_IMHDR + 1))
+
+	# Initialize the image descriptor structure.
+	call strcpy ("imhdr", IM_MAGIC(im), SZ_IMMAGIC)
+	call strcpy ("s_imhdr", IM_NAME(im), SZ_IMNAME)
+	IM_LENHDRMEM(im) = len_imhdr
+	IM_HDRLEN(im) = len_imhdr
+	IM_UABLOCKED(im) = -1
+	IM_NDIM(im) = ndim
+	IM_NPHYSDIM(im) = ndim
+
+	return (im)
+end

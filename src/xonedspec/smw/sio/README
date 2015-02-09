@@ -1,0 +1,140 @@
+		    SPECTRUM I/O INTERFACE
+
+		    September 6, 20001
+
+INTRODUCTION
+
+The routines described here provided access to one-dimensional spectra
+in a variety of formats.
+
+The structure of the interface reflects the fact that this replaced a
+purely image spectral format.  In order to simplify the translation of
+existing programs the arguments are very similar to the IMIO routines
+they replace.
+
+
+
+		PUBLIC ROUTINES
+
+	    s =	s_map (fname, mode, arg)		[immap]
+		s_unmap (s)				[imunmap]
+
+	  buf =	s_gsr  (s, l, b)			[imgl3r]
+	  buf =	s_psr  (s, l, b)			[impl3r]
+	  buf =	s_gs3r (s, c1, c2, l1, l2, b1, b2)	[imgs3r]
+	  buf =	s_ps3r (s, c1, c2, l1, l2, b1, b2)	[imps3r]
+
+	 stat =	s_accf (s, key)				[imaccf]
+	 dval =	s_getd (s, key)				[imgetd]
+	 ival =	s_geti (s, key)				[imgeti]
+	 rval =	s_getr (s, key)				[imget4]
+		s_gstr (s, key, str, maxchar)		[imgstr]
+		s_gkey (s, key, keyroot, element)
+		s_addd (s, key, value)			[imaddd]
+		s_addi (s, key, value)			[imaddi]
+		s_addr (s, key, value)			[imaddr]
+		s_astr (s, key, value)			[imastr]
+		s_delf (s, key)				[imdelf]
+
+	 stat =	s_gnfn (s, fn, outstr, maxch)		[imgnfn]
+	   fn =	s_ofnl (s, template, sort)		[imofnl]
+		s_cfnl (s, fn)				[imcfnl]
+
+		s_gap (s, ap, index)
+		s_seti (s, param, value)		[imseti]
+		s_flush (s)				[imflush]
+
+		s_attrib (s, smw)
+	  ptr =	s_mwopens (s, index)
+		s_mwsaves (mw, s)
+		s_setwcs (mw, axis)
+
+		PRIVATE ROUTINES
+
+	  ptr =	s_mapim (fname, mode, arg)
+	  ptr =	s_maptb (fname, mode, arg)
+
+	  ptr =	s_imhdr (ndim, len_hdr)
+
+	  ptr =	s_mwopeni (s, index)
+	  ptr =	s_mwopent (s, index)
+
+		skeymap_open (fname)
+		skeymap_close ()
+		skeymap_key (parameter, str, max_char)
+		skeymap_inv (parameter, str, max_char)
+		skeymap_defs (parameter, str, max_char)
+		skeymap_defi (parameter, ival)
+		skeymap_defr (parameter, rval)
+		skeymap_defd (parameter, dval)
+
+
+SPECTRUM VECTORS
+
+In many applications the SMW interface is used and spectral vectors are
+obtained from the SMW structure.  However, in some applications more
+direct access is provided using the S_[GP]SR and S_[GP]S3R routines.
+This has a model of the spectra as packed into a 3D array.  The first
+dimension is the dispersion elements, the second dimension are different
+spectra, and the third are different auxilary spectra.
+
+SPECTRUM POINTER STRUCTURE
+
+# Spectrum I/O definitions.
+
+define  S_MAXDIM                3
+
+define	S_LENSTR	99		# Lengths of strings
+define	S_LEN		158		# Length of SIO structure
+
+define	S_FILE		Memc[P2C($1)]	# Spectrum file name
+define  S_TITLE        	Memc[P2C($1+50)]# Spectrum file title
+define  S_STRBUF       	Memc[P2C($1+100)]# String buffer
+define	S_NDIM		Memi[$1+150]	# Logical dim of spectrum file
+define	S_PDIM		Memi[$1+151]	# Physical dim of spectrum file
+define	S_NDISP		Memi[$1+152]	# Number of dispersion points
+define	S_NSPEC		Memi[$1+153]	# Number of spectra
+define	S_NAUX		Memi[$1+154]	# Number of auxilary elements
+define  S_PIXTYPE       Memi[$1+155]	# Pixel type of spectral data
+
+define	S_IM		Memi[$1+156]	# IMIO pointer for images
+define	S_TB		Memi[$1+157]	# Table pointer for tables
+
+
+CONVERTING EXISTING ROUTINES
+
+
+The following do not use a pointer.
+
+	s_access	imaccess
+	s_delete	imdelete
+	s_gcluster	imgcluster
+	s_gimage	imgimage
+	s_gsection	imgsection
+	s_rename	imrename
+	s_tclose	imtclose
+	s_tgetim	imtgetim
+	s_topen		imtopen
+	s_topenp	imtopenp
+	s_trew		imtrew
+
+The following have a modified argument list.
+
+	s_mwopens	mw_openim
+	s_mwsaves	mw_saveim
+	s_gnfn		imgnfn
+	s_cfnl		imcfnl
+
+The following show the equivelances in the structure definitions.
+
+	S_MAXDIM	IM_MAXDIM
+
+	S_TITLE		IM_TITLE($1)
+	S_NDIM		IM_NDIM($1)
+	S_NDISP		IM_LEN($1,1)
+	S_NSPEC		IM_LEN($1,2)
+	S_NAUX		IM_LEN($1,3)
+	S_PIXTYPE	IM_PIXTYPE($1)
+
+	S_FILE		IM_HDRFILE($1)
+	S_PDIM		IM_NPHYSDIM($1)

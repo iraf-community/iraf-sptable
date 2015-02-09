@@ -1,0 +1,8 @@
+# Root task entry for the package help tree.  Defines <package> as both a
+# task and a package in the help database.
+
+sptable		men  = sptable$sptable.men,
+		hlp  = sptable$sptable.men,
+		sys  = sptable$sptable.hlp,
+		pkg  = sptable$sptable.hd,
+		src  = sptable$sptable.cl

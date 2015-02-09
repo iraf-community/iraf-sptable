@@ -1,0 +1,55 @@
+Starting Mar, 2014: FV
+
+Figure out what changes are part of the new interfaces.
+
+Key file: sio/README
+
+IM_LEN(im,2) -> S_NSPEC(im)
+IM_LEN(im,3) -> S_NAUX(im)
+imunmap (im) -> s_unmap(im)
+
+Need to make api change for imaccess: see splot.x
+
+
+--------------------------------
+
+lib/zzsetenv.def
+    Merged changes from noao$lib
+
+lib/units.h
+lib/funits.h
+    P2R() changes.
+
+lib/ccdtime/
+lib/Revisions
+lib/obsdb.dat
+lib/strip.noao
+lib/mkpkg.sf.SSUN
+lib/scr/
+lib/helpdb.mip
+    Copied from current v2.16 noao$lib
+
+lib/smw.h
+    Merged in 64-bit changes, fixed bug in definition of APLOW
+
+mwcs/mwsave.x
+mwcs/mwsctran.x
+mwcs/mwopenim.x
+mwcs/iwrfits.x
+mwcs/iwgbfits.x
+mwcs/mwloadim.x
+mwcs/iwewcs.x
+mwcs/mwltran.gx
+mwcs/mwv2tran.gx
+mwcs/mwc2tran.gx
+mwcs/imwcs.h
+mwcs/wftnx.x
+mwcs/wfzpx.x
+    Merged in changes from v2.16 mwcs$
+
+mwcs/mkpkg
+mwcs/wfzpn.x		+
+mwcs/wftpv.x		+
+mwcs/wfinit.x
+    Added ZPN and TPV projection.
+

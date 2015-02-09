@@ -1,0 +1,919 @@
+# Copyright(c) 1986 Association of Universities for Research in Astronomy Inc.
+
+include	<syserr.h>
+include	<error.h>
+include	<mach.h>
+include	"mwcs.h"
+
+.help WFP3D
+.nf -------------------------------------------------------------------------
+WFP3D -- WCS function driver for the 3D polynomial correction.
+
+These routines apply a 3D polynomial correction to the intermediate
+coordinates from three coupled axes.  The wtype for the three axes is "p3d"
+and the axtypes are the CTYPE strings for the final world coordinate
+projection.  A secondary MWCS transformation is set up using the axtype
+values to apply the world coordinate projection.  Any of the MWCS function
+drivers may be used provided they do not use PV coefficients.
+
+Driver routines:
+
+	FN_INIT		wf_p3d_init (fc, dir)
+	FN_DESTROY	wf_p3d_destroy (fc)
+	FN_FWD		wf_p3d_fwd (fc, v1, v2)
+	FN_INV		wf_p3d_inv (fc, v1, v2)
+
+.endhelp --------------------------------------------------------------------
+
+# Driver specific fields of function call (FC) descriptor.
+define	FC_LEN		42			# Length of structure
+define	FC_MW1		Memi[$1+FCU]		# Secondary MWCS pointer
+define	FC_CT1		Memi[$1+FCU+1]		# Secondary CT pointer
+define	FC_NPOLY	Memi[$1+FCU+2]		# Number of polynomials
+define	FC_NCOEFFS	Memi[$1+FCU+$2+2]	# Number of coefficients
+define	FC_PV		Memi[$1+FCU+$2+5]	# Coefficients (pointer)
+define	FC_O1		Memi[$1+FCU+$2+8]	# Order for first axis
+define	FC_O2		Memi[$1+FCU+$2+11]	# Order for second axis
+define	FC_O3		Memi[$1+FCU+$2+14]	# Order for third axis
+define	FC_N1		Memd[P2D($1+FCU+16)+$2]	# Normalization for first axis
+define	FC_N2		Memd[P2D($1+FCU+22)+$2]	# Normalization for second axis
+define	FC_N3		Memd[P2D($1+FCU+28)+$2]	# Normalization for third axis
+define	FC_LAST		Memd[P2D($1+FCU+34)+$2]	# Last inverted coordinate
+
+
+# WF_P3D_INIT -- Initialize the 3D polynomial forward or inverse transform.
+
+procedure wf_p3d_init (fc, dir)
+
+pointer	fc			#I pointer to FC descriptor
+int	dir			#I direction of transform
+
+int	i, j, ax, axes[3], npv, strncmp()
+pointer	mw, ct, wp, wv, pv, mw1, ct1, mw_open(), wf_p3d_sctran_1()
+pointer	sp, axtype, wtype, r, w, cd
+bool	streq()
+
+begin
+	call smark (sp)
+	call salloc (axtype, SZ_LINE, TY_CHAR)
+	call salloc (wtype, SZ_LINE, TY_CHAR)
+	call salloc (r, 3, TY_DOUBLE)
+	call salloc (w, 3, TY_DOUBLE)
+	call salloc (cd, 9, TY_DOUBLE)
+
+	# Initialize FC to zero.
+	call aclri (FC_MW1(fc), FC_LEN)
+
+	ct = FC_CT(fc)
+	mw = CT_MW(ct)
+	wp = FC_WCS(fc)
+
+	# Open the secondary MWCS.
+	mw1 = mw_open (NULL, 3)
+	call mw_newsystem (mw1, "image", 3)
+
+	# Set axes.  Identify celestial axes to be set later.
+	j = 0
+	Memc[wtype] = EOS
+	do i = 1, 3 {
+	    ax = CT_AXIS(ct,FC_AXIS(fc,i))
+	    ifnoerr (call mw_gwattrs (mw, ax, "axtype", Memc[axtype],SZ_LINE)) {
+		if (strncmp (Memc[axtype], "ra--", 4) == 0 ||
+		    strncmp (Memc[axtype], "dec-", 4) == 0 ||
+		    strncmp (Memc[axtype+1], "lon", 3) == 0 ||
+		    strncmp (Memc[axtype+1], "lat", 3) == 0) {
+		    j = j + 1
+		    axes[j] = ax
+		    if (Memc[wtype] == EOS)
+			call strcpy (Memc[axtype+5], Memc[wtype], 4)
+		    else if (!streq (Memc[axtype+5], Memc[wtype]))
+			call error (1, "Unmatched celestial axes")
+		    if (Memc[axtype+2] == '-')
+			Memc[axtype+2] = EOS
+		    else if (Memc[axtype+3] == '-')
+			Memc[axtype+3] = EOS
+		    else
+			Memc[axtype+4] = EOS
+		    call mw_swattrs (mw1, ax, "axtype", Memc[axtype])
+		} else
+		    call mw_swtype (mw1, ax, 1, Memc[axtype], "")
+	    }
+	}
+
+	# Set coupled celestial axes.
+	if (j > 0) {
+	    if (j != 2)
+		call error (1, "Unmatched celestial axes")
+	    call mw_swtype (mw1, axes, j, Memc[wtype], "")
+	}
+
+	# Set reference coordinate.
+	wv = MI_DBUF(mw) + WCS_W(wp) - 1
+	call mw_gwtermd (mw1, Memd[r], Memd[w], Memd[cd], 3)
+	call mw_swtermd (mw1, Memd[r], Memd[wv], Memd[cd], 3)
+
+	# Set transformation.
+	if (dir == FORWARD)
+	   ct1 = wf_p3d_sctran_1 (mw1, "physical", "world", 0)
+	else
+	   ct1 = wf_p3d_sctran_1 (mw1, "world", "physical", 0)
+
+	FC_MW1(fc) = mw1
+	FC_CT1(fc) = ct1
+
+	# Set polynomial coefficients.  Everything in the FC
+	# structure has been initialized to zero.  Missing PV values
+	# default to 0.
+
+	do i = 1, 3 {
+	    npv = WCS_NPVC(wp,i)
+	    pv = WCS_PVC(wp,i)
+	    if (npv > 6 && pv != NULL) {
+		pv = MI_DBUF(mw) + pv - 1
+		FC_O1(fc,i) = nint (Memd[pv])
+		FC_O2(fc,i) = nint (Memd[pv+1])
+		FC_O3(fc,i) = nint (Memd[pv+2])
+		FC_N1(fc,i) = 1 + Memd[pv+3]
+		FC_N2(fc,i) = 1 + Memd[pv+4]
+		FC_N3(fc,i) = 1 + Memd[pv+5]
+		FC_NCOEFFS(fc,i) = (FC_O1(fc,i) + 1) * (FC_O2(fc,i) + 1) *
+		    (FC_O3(fc,i) + 1)
+		if (FC_NCOEFFS(fc,i) > 0) {
+		    call calloc (FC_PV(fc,i), FC_NCOEFFS(fc,i), TY_DOUBLE)
+		    call amovd (Memd[pv+6], Memd[FC_PV(fc,i)], npv-6)
+		    FC_NPOLY(fc) = FC_NPOLY(fc) + 1
+		} else
+		    FC_NCOEFFS(fc,i) = 0
+	    }
+	}
+end
+
+
+# WF_P3D_DESTROY -- Destroy memory associated with function driver.
+
+procedure wf_p3d_destroy (fc)
+
+pointer	fc			#I pointer to FC descriptor
+
+int	i
+
+begin
+	do i = 1, 3
+	    call mfree (FC_PV(fc,i), TY_DOUBLE)
+	call wf_p3d_close_3 (FC_MW1(fc))
+end
+
+
+# WF_P3D_FWD -- Forward transformation with polynomial correction.
+
+procedure wf_p3d_fwd (fc, p, w)
+
+pointer	fc			#I pointer to FC descriptor
+double	p[3]			#I physical coordinates (xi, eta)
+double	w[3]			#O world coordinates (ra, dec)
+
+double	p1[3]
+
+begin
+	# Apply polynomial correction to each axis and then the projection.
+	if (FC_NPOLY(fc) == 0)
+	    call wf_p3d_ctran_2 (FC_CT1(fc), p, w, 3)
+	else {
+	    call wf_p3d_a (fc, p, p1)
+	    call wf_p3d_ctran_2 (FC_CT1(fc), p1, w, 3)
+	}
+end
+
+
+define	TOL	10000
+define	NIT	1000
+define	MAXINC	10
+
+# WF_P3D_INV -- Inverse transformation with polynomial correction.
+
+procedure wf_p3d_inv (fc, w, p)
+
+pointer	fc			#I pointer to FC descriptor
+double	w[3]			#I input world (RA, DEC) coordinates
+double	p[3]			#I output physical coordinates
+
+int	i, ninc
+double	tol, p1[3], p2[3], dp[3], adp[3], adplast[3], deriv[3,3], ideriv[3,3]
+bool	fp_equald()
+
+begin
+	if (FC_NPOLY(fc) == 0)
+	    call wf_p3d_ctran_2 (FC_CT1(fc), w, p, 3)
+	else {
+	    tol = TOL * EPSILOND
+	    call wf_p3d_ctran_2 (FC_CT1(fc), w, p1, 3)
+	    ninc = 0
+	    call amovkd (MAX_DOUBLE, adplast, 3)
+	    do i = 1, NIT {
+		p[1] = FC_LAST(fc,1); p[2] = FC_LAST(fc,2); p[3] = FC_LAST(fc,3)
+		call wf_p3d_a (fc, p, p2)
+		#if (fp_equald (p1[1], p2[1]) &&
+		#    fp_equald (p1[2], p2[2]) &&
+		#    fp_equald (p1[3], p2[3]))
+		#    return
+		dp[1] = p1[1] - p2[1]; adp[1] = abs (dp[1])
+		dp[2] = p1[2] - p2[2]; adp[2] = abs (dp[2])
+		dp[3] = p1[3] - p2[3]; adp[3] = abs (dp[3])
+		if (adp[1] < tol && adp[2] < tol && adp[3] < tol)
+		    return
+		if (adp[1] <= adplast[1])
+		    ninc = 0
+		else if (adp[2] <= adplast[2])
+		    ninc = 0
+		else if (adp[3] <= adplast[3])
+		    ninc = 0
+		else {
+		    ninc = ninc + 1
+		    if (ninc > MAXINC)
+			break
+		}
+		adplast[1] = adp[1]; adplast[2] = adp[2]; adplast[3] = adp[3]
+		call wf_p3d_b (fc, p, deriv)
+		call mw_invertd (deriv, ideriv, 3)
+		call mw_vmuld (ideriv, dp, p2, 3)
+		FC_LAST(fc,1) = p[1] + p2[1]
+		FC_LAST(fc,2) = p[2] + p2[2]
+		FC_LAST(fc,3) = p[3] + p2[3]
+	    }
+	    p[1] = FC_LAST(fc,1); p[2] = FC_LAST(fc,2); p[3] = FC_LAST(fc,3)
+	    call wf_p3d_a (fc, p, p2)
+	    #if (fp_equald (p1[1], p2[1]) &&
+	#	fp_equald (p1[2], p2[2]) &&
+	#	fp_equald (p1[3], p2[3]))
+	#	return
+	    dp[1] = p1[1] - p2[1]; adp[1] = abs (dp[1])
+	    dp[2] = p1[2] - p2[2]; adp[2] = abs (dp[2])
+	    dp[3] = p1[3] - p2[3]; adp[3] = abs (dp[3])
+	    if (adp[1] < tol && adp[2] < tol && adp[3] < tol)
+		return
+	    call error (1, "Did not converge")
+	}
+end
+
+
+# WF_P3D_A -- Evaluate polynomials.
+
+procedure wf_p3d_a (fc, x, y)
+
+pointer	fc			#I pointer to FC descriptor
+double	x[3]			#I input coordinates
+double	y[3]			#O output coordinates
+
+int	i, j, k, m
+double	sum, xi, yj, zk, yjzk
+pointer	pv
+
+begin
+	do m = 1, 3 {
+	    if (FC_NCOEFFS(fc,m) > 0) {
+		sum = x[m]
+		pv = FC_PV(fc,m)
+		do k = 0, FC_O3(fc,m) {
+		    zk = (x[3] / FC_N3(fc,m)) ** k
+		    do j = 0, FC_O2(fc,m) {
+			yj = (x[2] / FC_N2(fc,m)) ** j
+			yjzk = yj * zk
+			do i = 0, FC_O1(fc,m) {
+			    xi = (x[1] / FC_N1(fc,m)) ** i
+			    sum = sum + Memd[pv] * xi * yjzk
+			    pv = pv + 1
+			}
+		    }
+		}
+		y[m] = sum
+	    } else
+		y[m] = x[m]
+	}
+end
+
+
+# WF_P3D_B -- Evaluate derivatives of polynomials.
+
+procedure wf_p3d_b (fc, x, y)
+
+pointer	fc			#I pointer to FC descriptor
+double	x[3]			#I input coordinates
+double	y[3,3]			#O output coordinates
+
+int	i, j, k, m, n
+double	sum, xi, yj, zk, yjzk
+pointer	pv
+
+begin
+	do m = 1, 3 {
+	    do n = 1, 3 {
+		if (n == m)
+		    y[n,m] = 1
+		else
+		    y[n,m] = 0
+	    }
+	}
+
+	do m = 1, 3 {
+	    if (FC_NCOEFFS(fc,m) > 0) {
+		do n = 1, 3 {
+		    sum = y[n,m]
+		    pv = FC_PV(fc,m)
+		    do k = 0, FC_O3(fc,m) {
+			if (n == 3) {
+			    if (k == 0) {
+				pv = pv + (FC_O1(fc,m)+1) * (FC_O2(fc,m)+1)
+				next
+			    }
+			    zk = k / FC_N3(fc,m) *
+				(x[3] / FC_N3(fc,m)) ** (k-1)
+			} else
+			    zk = (x[3] / FC_N3(fc,m)) ** k
+			do j = 0, FC_O2(fc,m) {
+			    if (n == 2) {
+				if (j == 0) {
+				    pv = pv + (FC_O1(fc,m)+1)
+				    next
+				}
+				yj = j / FC_N2(fc,m) *
+				    (x[2] / FC_N2(fc,m)) ** (j-1)
+			    } else
+				yj = (x[2] / FC_N2(fc,m)) ** j
+			    yjzk = yj * zk
+			    do i = 0, FC_O1(fc,m) {
+				if (n == 1) {
+				    if (i == 0) {
+					pv = pv + 1
+					next
+				    }
+				    xi = i / FC_N1(fc,m) *
+					(x[1] / FC_N1(fc,m)) ** (i-1)
+				} else
+				    xi = (x[1] / FC_N1(fc,m)) ** i
+				sum = sum + Memd[pv] * xi * yjzk
+				pv = pv + 1
+			    }
+			}
+		    }
+		    y[n,m] = sum
+		}
+	    }
+	}
+end
+
+
+################################################################################
+# The following routines are copies of MW_SCTRAN and MW_CTRAND included
+# here to avoid recursion.
+
+
+# MW_SCTRAN -- Setup a coordinate transformation (CTRAN) descriptor.
+
+pointer procedure wf_p3d_sctran_1 (mw, system1, system2, axbits)
+
+pointer mw			#I pointer to MWCS descriptor
+char	system1[ARB]		#I input coordinate system
+char	system2[ARB]		#I output coordinate system
+int	axbits			#I bitmap defining axes to be transformed
+
+bool	newfunc
+int	naxes, axis[MAX_DIM], wfno, fn, epa
+int	i, j, k , matlen, ndata, ctlen, pdim
+pointer	i_ltm, i_ltv, o_ltm, o_ltv, t_ltm, t_ltv, ltm, ltv
+pointer	sp, w1, w2, ct, wf, fc, lp, ip, op, ct_r, sv_wcs
+
+pointer	coerce()
+errchk	syserr, syserrs, calloc, zcall2, mw_invertd, mw_ssystem
+include	"mwcs.com"
+
+begin
+	call smark (sp)
+
+	# Get pointers to the input and output systems.
+	sv_wcs = MI_WCS(mw)
+	iferr {
+	    call mw_ssystem (mw, system1)
+	    w1 = MI_WCS(mw)
+	    call mw_ssystem (mw, system2)
+	    w2 = MI_WCS(mw)
+	} then {
+	    MI_WCS(mw) = sv_wcs
+	    call erract (EA_ERROR)
+	} else
+	    MI_WCS(mw) = sv_wcs
+
+	# Get the physical axis list.  The bitflags in AXBITS define the axes
+	# in the logical system; run these through the axis map (if enabled)
+	# to get the list of physical axes for which the transformation is to
+	# be prepared.
+
+	call mw_gaxlist (mw, axbits, axis, naxes)
+
+	# Allocate the CTRAN descriptor.  First we must figure out how
+	# much space is required.  The space required is for the base
+	# descriptor, plus additional space for the LTM and LTV, which vary
+	# in size depending upon the dimensionality of the transformation.
+	# The whole thing is then doubled to provide 2 versions of the
+	# descriptor, providing both single and double precision versions
+	# of the LTM and LTV.  Any additional storage utilized by the WCS
+	# functions is separately allocated by the initialization routines
+	# in the function drivers.
+
+	matlen = naxes * naxes
+	ndata = matlen + naxes
+	ctlen = LEN_CTBASE + ndata * SZ_DOUBLE / SZ_STRUCT
+	call calloc (ct, ctlen*2, TY_STRUCT)
+
+	# Save a pointer to the CTRAN descriptor in the main MWCS descriptor,
+	# to permit automatic deallocation at close time.
+
+	do i = 1, MAX_CTRAN+1 {
+	    if (i > MAX_CTRAN) {
+		call mfree (ct, TY_STRUCT)
+		call syserr (SYS_MWCTOVFL)
+	    }
+
+	    if (MI_CTRAN(mw,i) == NULL) {
+		MI_CTRAN(mw,i) = ct
+		break
+	    }
+	}
+
+	CT_MW(ct) = mw
+	CT_WCSI(ct) = w1
+	CT_WCSO(ct) = w2
+	CT_NDIM(ct) = naxes
+	CT_R(ct) = ct + ctlen
+	call amovi (axis, CT_AXIS(ct,1), naxes)
+	CT_LTM(ct) = coerce (ct + LEN_CTBASE, TY_STRUCT, TY_DOUBLE)
+	CT_LTV(ct) = CT_LTM(ct) + matlen
+
+	ltm = CT_LTM(ct)
+	ltv = CT_LTV(ct)
+
+	# We also need some full-system matrix and vector buffers.
+	pdim = min (WCS_NDIM(w1), WCS_NDIM(w2))
+	pdim = min (MI_NDIM(mw), pdim)
+
+	i = pdim * pdim
+	call salloc (i_ltm, i, TY_DOUBLE)
+	call salloc (i_ltv, pdim, TY_DOUBLE)
+	call salloc (o_ltm, i, TY_DOUBLE)
+	call salloc (o_ltv, pdim, TY_DOUBLE)
+	call salloc (t_ltm, i, TY_DOUBLE)
+	call salloc (t_ltv, pdim, TY_DOUBLE)
+
+	# Compute the transformation.  A transformation between any two
+	# world systems W1 and W2 consists of the transformation W1->P
+	# from W1 to the physical system, followed by a transformation
+	# P->W2 to the second world system.  The linear portions of these
+	# two transformations can be combined to produce a single linear
+	# transformation, and if no WCS function calls are involved at
+	# either end, the entire transformation reduces to a single linear
+	# transformation defined by LTM and LTV.  Note that as far as we
+	# are concerned here, the special world systems "logical" and
+	# "physical" are just like other world systems, except that both are
+	# always linear systems.  The linear term for the logical system is
+	# the MWCS Lterm; for the physical system it is the identity matrix.
+
+	# Set up the transformation W1->P.  First we must determine if there
+	# are any WCS function calls.  We do this by going ahead and compiling
+	# the "in" function calls in the CTRAN descriptor.
+
+	do i = 1, naxes {
+	    wfno = WCS_AXCLASS(w1,axis[i])
+
+	    # Skip to next axis if no WCS function is assigned to this axis.
+	    if (wfno == 0)
+		next
+
+	    # Has function call for this axis already been compiled?
+	    newfunc = true
+	    do j = 1, CT_NCALLI(ct) {
+		fc = CT_FCI(ct,j)
+		do k = 1, FC_NAXES(fc)
+		    if (FC_AXIS(fc,k) == i)
+			newfunc = false
+	    }
+
+	    # Compile a function call for the inverse transformation.
+	    if (newfunc) {
+		CT_NCALLI(ct) = CT_NCALLI(ct) + 1
+		if (CT_NCALLI(ct) > MAX_CALL)
+		    call syserrs (SYS_MWFCOVFL, system1)
+
+		fc = CT_FCI(ct,CT_NCALLI(ct))
+		wf = WCS_FUNC(w1,wfno)
+		fn = WF_FN(wf)
+
+		FC_CT(fc)    = ct
+		FC_WCS(fc)   = w1
+		FC_WF(fc)    = wf
+		FC_FCN(fc)   = FN_INV(fn)
+		FC_NAXES(fc) = WF_NAXES(wf)
+
+		# Store CTRAN-relative list of axes in function call
+		# descriptor.  Verify that all the axes needed for the
+		# function call are included in the transformation.
+		# This requirement can theoretically be relaxed in
+		# some cases but this is not supported in MWCS.
+
+		do j = 1, WF_NAXES(wf) {
+		    for (k=1;  k <= naxes;  k=k+1)
+			if (axis[k] == WF_AXIS(wf,j)) {
+			    FC_AXIS(fc,j) = k
+			    break
+			}
+		    if (k > naxes)
+			call syserrs (SYS_MWMISSAX, system1)
+		}
+
+		# Call the function driver to perform any driver dependent
+		# initialization.
+
+		epa = FN_INIT(fn)
+		if (epa != NULL)
+		    call zcall2 (epa, fc, INVERSE)
+	    }
+	}
+
+	# Prepare the linear part of the input transformation W1->P.
+	# This is LTM=inv(CD), and for axis I, LTV[i]=(R[i]-inv(CD)*W)
+	# if no function call, or LTV[i]=R[i] if there is a function
+	# assigned to axis I which already deals with the W[i].  All
+	# this is done in the full dimension of the internal system for
+	# now; extraction of the portion of the full system affecting
+	# the CTRAN axes is done later to permit verification of the
+	# legality of the reduction step required.
+
+	# Invert CD matrix.
+	if (WCS_CD(w1) == NULL)
+	    call mw_mkidmd (Memd[i_ltm], pdim)
+	else
+	    call mw_invertd (D(mw,WCS_CD(w1)), Memd[i_ltm], pdim)
+
+	# If no function calls for an axis and W is set, LTV=(R-inv(CD)*W).
+	if (WCS_W(w1) != NULL) {
+	    call amovd (D(mw,WCS_W(w1)), Memd[i_ltv], pdim)
+	    do i = 1, CT_NCALLI(ct) {
+		fc = CT_FCI(ct,i)
+		do j = 1, FC_NAXES(fc) {
+		    k = axis[FC_AXIS(fc,j)]
+		    Memd[i_ltv+k-1] = 0.
+		}
+	    }
+	    call mw_vmuld (Memd[i_ltm], Memd[i_ltv], Memd[t_ltv], pdim)
+	    if (WCS_R(w1) == NULL)
+		call anegd (Memd[t_ltv], Memd[i_ltv], pdim)
+	    else
+		call asubd (D(mw,WCS_R(w1)), Memd[t_ltv], Memd[i_ltv], pdim)
+	} else {
+	    if (WCS_R(w1) == NULL)
+		call aclrd (Memd[i_ltv], pdim)
+	    else
+		call amovd (D(mw,WCS_R(w1)), Memd[i_ltv], pdim)
+	}
+
+	# Now prepare the output side of the transformation, from P->W2.
+	# Like the input half, this consists of a linear term and a list
+	# of zero or more function calls.
+
+	# Compile the "out" function calls in the CTRAN descriptor.
+	do i = 1, naxes {
+	    wfno = WCS_AXCLASS(w2,axis[i])
+
+	    # Skip to next axis if no WCS function is assigned to this axis.
+	    if (wfno == 0)
+		next
+
+	    # Has function call for this axis already been compiled?
+	    newfunc = true
+	    do j = 1, CT_NCALLO(ct) {
+		fc = CT_FCO(ct,j)
+		do k = 1, FC_NAXES(fc)
+		    if (FC_AXIS(fc,k) == i)
+			newfunc = false
+	    }
+
+	    # Compile a function call for the forward transformation.
+	    if (newfunc) {
+		CT_NCALLO(ct) = CT_NCALLO(ct) + 1
+		if (CT_NCALLO(ct) > MAX_CALL)
+		    call syserrs (SYS_MWFCOVFL, system2)
+
+		fc = CT_FCO(ct,CT_NCALLO(ct))
+		wf = WCS_FUNC(w2,wfno)
+		fn = WF_FN(wf)
+
+		FC_CT(fc)    = ct
+		FC_WCS(fc)   = w2
+		FC_WF(fc)    = wf
+		FC_FCN(fc)   = FN_FWD(fn)
+		FC_NAXES(fc) = WF_NAXES(wf)
+
+		# Store CTRAN-relative list of axes in function call
+		# descriptor.  Verify that all the axes needed for the
+		# function call are included in the transformation.
+
+		do j = 1, WF_NAXES(wf) {
+		    for (k=1;  k <= naxes;  k=k+1)
+			if (axis[k] == WF_AXIS(wf,j)) {
+			    FC_AXIS(fc,j) = k
+			    break
+			}
+		    if (k > naxes)
+			call syserrs (SYS_MWMISSAX, system2)
+		}
+
+		# Call the function driver to perform any driver dependent
+		# initialization.
+
+		epa = FN_INIT(fn)
+		if (epa != NULL)
+		    call zcall2 (epa, fc, FORWARD)
+	    }
+	}
+
+	# Prepare the linear part of the input transformation P->W2.
+	# This is LTM=CD, and for axis I, LTV[i]=(W-CD*R) if no function
+	# call, or LTV[i]=(-CD*R) if there is a function assigned to axis
+	# I which already deals with the W[i].
+
+	# Copy CD matrix to LTM.
+	if (WCS_CD(w2) == NULL)
+	    call mw_mkidmd (Memd[o_ltm], pdim)
+	else
+	    call amovd (D(mw,WCS_CD(w2)), Memd[o_ltm], pdim*pdim)
+
+	# Copy -R to t_ltv.
+	if (WCS_R(w2) == NULL)
+	    call aclrd (Memd[t_ltv], pdim)
+	else
+	    call amulkd (D(mw,WCS_R(w2)), -1.0D0, Memd[t_ltv], pdim)
+
+	# Compute -CD*R in LTV.
+	call mw_vmuld (Memd[o_ltm], Memd[t_ltv], Memd[o_ltv], pdim)
+
+	# If no function calls for an axis and W is set, LTV=(W-CD*R).
+	if (WCS_W(w2) != NULL) {
+	    call amovd (D(mw,WCS_W(w2)), Memd[t_ltv], pdim)
+	    call aaddd (Memd[t_ltv], Memd[o_ltv], Memd[o_ltv], pdim)
+	    do i = 1, CT_NCALLO(ct) {
+		fc = CT_FCO(ct,i)
+		do j = 1, FC_NAXES(fc) {
+		    k = axis[FC_AXIS(fc,j)]		# undo +W[k]
+		    lp = o_ltv + k - 1
+		    Memd[lp] = Memd[lp] - Memd[t_ltv+k-1]
+		}
+	    }
+	}
+
+	# Now combine the linear terms of the input and output transformations
+	# to produce the linear portion of the full transformation.
+
+	call mw_mmuld (Memd[o_ltm], Memd[i_ltm], Memd[t_ltm], pdim)
+	call mw_vmuld (Memd[o_ltm], Memd[i_ltv], Memd[t_ltv], pdim)
+	call    aaddd (Memd[o_ltv], Memd[t_ltv], Memd[t_ltv], pdim)
+
+	# Extract the rows of the full linear transformation which are used
+	# for the axes involved in the transformation we are compiling.
+	# In the process we must examine the off-diagonal elements of the
+	# matrix to verify that the system does not include any dependencies
+	# upon axes other than those included in the transformation we are
+	# compiling.  (This restriction prohibits dimensional reduction via
+	# an image section which results in loss of a rotated axis).
+
+	do i = 1, naxes {
+	    # Get matrix line pointers for axis[i].
+	    ip = t_ltm + (axis[i]-1) * pdim
+	    op = ltm + (i-1) * naxes
+
+	    do j = 1, pdim {
+		# Is column J used by transform?
+		for (k=1;  k <= naxes;  k=k+1)
+		    if (axis[k] == j)
+			break
+
+		# If column J is not used in the transform but is not zero,
+		# then transform I is dependent upon physical axis J and
+		# we cannot do the transform.  If column J is used in the
+		# transform, copy the value to the final output matrix LTM
+		# discarding unused columns as we go.
+
+		if (k > naxes) {
+		    # Check for dependency on axis outside transform.
+		    if (abs(Memd[ip+j-1]) > EPSILOND*100.0D0)
+			call syserr (SYS_MWROTDEP)
+		} else {
+		    # Add matrix element to final LTM.
+		    Memd[op+k-1] = Memd[ip+j-1]
+		}
+	    }
+
+	    # Copy the LTV vector element.
+	    Memd[ltv+i-1] = Memd[t_ltv+axis[i]-1]
+	}
+
+	# Determine the transformation type.  This is LNR for a purely
+	# linear transformation with no rotational (off-diagonal) terms,
+	# LRO for a purely linear transform with rotational terms, and
+	# GEN for everything else.
+
+	if (CT_NCALLI(ct) > 0 || CT_NCALLO(ct) > 0)
+	    CT_TYPE(ct) = GEN
+	else {
+	    CT_TYPE(ct) = LNR
+	    do j = 1, naxes
+		do i = 1, naxes
+		    if (i != j) {
+			lp = ltm + (j-1)*naxes + i-1
+			if (abs(Memd[lp]) > EPSILOND*100.0D0) {
+			    CT_TYPE(ct) = LRO
+			    break
+			}
+		    }
+	}
+
+	# Prepare the single precision part of the transform.
+	call amovi (Memi[CT_D(ct)], Memi[CT_R(ct)], ctlen)
+
+	ct_r = CT_R(ct)
+	CT_LTM(ct_r) = coerce (ct_r + LEN_CTBASE, TY_STRUCT, TY_REAL)
+	CT_LTV(ct_r) = CT_LTM(ct_r) + matlen
+	call achtdr (Memd[CT_LTM(ct)], Memr[CT_LTM(ct_r)], matlen)
+	call achtdr (Memd[CT_LTV(ct)], Memr[CT_LTV(ct_r)], naxes)
+
+	call sfree (sp)
+	return (ct)
+end
+
+
+# MW_CTRAN -- Transform a single N-dimensional point, using the optimized
+# transformation set up by a prior call to MW_SCTRAN.
+
+procedure wf_p3d_ctran_2 (a_ct, p1, p2, ndim)
+
+pointer	a_ct			#I pointer to CTRAN descriptor
+double	p1[ndim]		#I coordinates of point in input system
+double	p2[ndim]		#O coordinates of point in output system
+int	ndim			#I dimensionality of point
+
+int	naxes, i, j
+pointer	ct, fc, ltm, ltv, d_ct
+double	v1[MAX_DIM], v2[MAX_DIM], iv[MAX_DIM], ov[MAX_DIM]
+errchk	zcall3
+
+begin
+	# Get real or double version of descriptor.
+	ct = CT_D(a_ct)
+
+	ltm = CT_LTM(ct)
+	ltv = CT_LTV(ct)
+
+	# Specially optimized cases.
+	if (CT_TYPE(ct) == LNR) {
+	    # Simple linear, nonrotated transformation.
+	    do i = 1, ndim
+		p2[i] = Memd[ltm+(i-1)*(ndim+1)] * p1[i] + Memd[ltv+i-1]
+	    return
+	} else if (CT_TYPE(ct) == LRO) {
+	    # Simple linear, rotated transformation.
+	    call mw_ltrand (p1, p2, Memd[ltm], Memd[ltv], ndim)
+	    return
+	}
+
+	# If we get here the transformation involves a call to one or more
+	# WCS functions.  In this general case, the transformation consists
+	# of zero or more calls to WCS functions to transform the input
+	# world coordinates to the linear input system, followed by a general
+	# linear transformation to the linear output system, followed by zero
+	# or more calls to WCS functions to do the forward transformation
+	# to generate the final output world coordinates.  The WCS function
+	# calls are always evaluated in double precision.
+
+	# Make zero or more WCS function calls for the different axes of the
+	# input system (inverse transform).
+
+	call achtdd (p1, iv, ndim)
+	do j = 1, CT_NCALLI(ct) {
+	    # Get pointer to function call descriptor.
+	    fc = CT_FCI(ct,j)
+	    naxes = FC_NAXES(fc)
+
+	    # Extract the coordinate vector for the function call.
+	    do i = 1, naxes
+		v1[i] = p1[FC_AXIS(fc,i)]
+
+	    # Call the WCS function.
+	    call zcall3 (FC_FCN(fc), fc, v1, v2)
+
+	    # Edit the vector IV, replacing the entries associated with
+	    # the WCS function by the transformed values.
+
+	    do i = 1, naxes
+		iv[FC_AXIS(fc,i)] = v2[i]
+	}
+
+	# Apply the general linear transformation.  We may as well do this in
+	# double since we already have to use double for the function calls.
+
+	d_ct = CT_D(a_ct)
+	call mw_ltrand (iv, ov, Memd[CT_LTM(d_ct)], Memd[CT_LTV(d_ct)], ndim)
+
+	# Make zero or more WCS function calls for the different axes of the
+	# output system (forward transform to final world system).
+
+	call achtdd (ov, p2, ndim)
+	do j = 1, CT_NCALLO(ct) {
+	    # Get pointer to function call descriptor.
+	    fc = CT_FCO(ct,j)
+	    naxes = FC_NAXES(fc)
+
+	    # Extract the coordinate vector for the function call.
+	    do i = 1, naxes
+		v1[i] = ov[FC_AXIS(fc,i)]
+
+	    # Call the WCS function.
+	    call zcall3 (FC_FCN(fc), fc, v1, v2)
+
+	    # Edit the final output vector, replacing the entries for the
+	    # function axes by their transformed values.
+
+	    do i = 1, naxes
+		p2[FC_AXIS(fc,i)] = v2[i]
+	}
+end
+
+
+# MW_CLOSE -- Close a MWCS descriptor and deallocate all resources used
+# by the descriptor.  Any CTRAN descriptors which have been opened on
+# the MWCS are automatically closed if not already manually closed by
+# the application.
+
+procedure wf_p3d_close_3 (mw)
+
+pointer	mw		#U pointer to MWCS descriptor
+
+int	i
+pointer	ct
+
+begin
+	# Free any still allocated CTRAN descriptors.
+	do i = 1, MAX_CTRAN {
+	    ct = MI_CTRAN(mw,i)
+	    if (ct != NULL)
+		iferr (call wf_p3d_ctfree_4 (ct))
+		    call erract (EA_WARN)
+	}
+
+	# Free the string and data buffers.
+	if (MI_SBUF(mw) != NULL)
+	    call mfree (MI_SBUF(mw), TY_CHAR)
+	if (MI_DBUF(mw) != NULL)
+	    call mfree (MI_DBUF(mw), TY_DOUBLE)
+
+	# Free the main descriptor.
+	call mfree (mw, TY_STRUCT)
+end
+
+
+# MW_CTFREE -- Free a CTRAN (coordinate transformation) descriptor.  We keep
+# track of all allocated CTRAN descriptors in the parent MWCS descriptor, and
+# NULL the saved entry for a descriptor when it is freed, thus guaranteeing
+# that a descriptor will be freed only once.
+
+procedure wf_p3d_ctfree_4 (ct)
+
+pointer	ct		#U pointer to CTRAN descriptor
+
+int	fn, i, j
+pointer mw, fc
+include	"mwcs.com"
+
+begin
+	if (ct != NULL) {
+	    mw = CT_MW(ct)
+	    if (mw != NULL)
+		do i = 1, MAX_CTRAN
+		    if (MI_CTRAN(mw,i) == ct) {
+			# Free private storage for any input WCS functions.
+			do j = 1, CT_NCALLI(ct) {
+			    fc = CT_FCI(ct,j)
+			    fn = WF_FN(FC_WF(fc))
+			    if (FN_DESTROY(fn) != NULL)
+				call zcall1 (FN_DESTROY(fn), fc)
+			}
+			# Free private storage for any output WCS functions.
+			do j = 1, CT_NCALLO(ct) {
+			    fc = CT_FCO(ct,j)
+			    fn = WF_FN(FC_WF(fc))
+			    if (FN_DESTROY(fn) != NULL)
+				call zcall1 (FN_DESTROY(fn), fc)
+			}
+			# Free the main CTRAN descriptor.
+			call mfree (ct, TY_STRUCT)
+			MI_CTRAN(mw,i) = NULL
+			break
+		    }
+	}
+end

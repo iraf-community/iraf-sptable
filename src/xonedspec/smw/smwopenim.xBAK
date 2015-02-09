@@ -1,0 +1,68 @@
+include <imhdr.h>
+include	<smw.h>
+include	<imio.h>
+include	<mwset.h>
+
+define	SFORMATS "|onedspec|equispec|multispec|physical|image|world|linear|"
+
+
+# SMW_OPENIM -- Open the spectral MWCS for various input formats.
+
+pointer procedure smw_openim (im)
+
+pointer	im		#I Image pointer
+pointer	mw		#O MWCS pointer
+
+pointer	sp, sformat, s_mwopens()
+bool	streq()
+int	wcsdim, sfmt, strdic(), mw_stati()
+errchk	s_mwopens, smw_oldms, smw_linear
+
+begin
+	call smark (sp)
+	call salloc (sformat, SZ_FNAME, TY_CHAR)
+
+	mw = s_mwopens (im, 1)
+	call mw_seti (mw, MW_USEAXMAP, NO)
+	wcsdim = mw_stati (mw, MW_NDIM)
+	call mw_gwattrs (mw, 0, "sformat", Memc[sformat], SZ_FNAME)
+	sfmt = strdic (Memc[sformat], Memc[sformat], SZ_FNAME, SFORMATS)
+
+	# Set various input formats.
+	switch (sfmt) {
+	case 1:
+	    call smw_open (mw, NULL, im)
+	case 2:
+	    call s_setwcs (mw, 1)
+	    call smw_equispec (im, mw)
+	case 3:
+	    call s_setwcs (mw, 1)
+	    call smw_multispec (im, mw)
+	default:
+	    if (sfmt == 0) {
+	        call eprintf (
+	    "WARNING: Unknown coordinate system `%s' - assuming `linear'.\n")
+		    call pargstr (Memc[sformat])
+	    }
+
+	    # Old "multispec" format.
+	    ifnoerr (call s_gstr (im, "APFORMAT", Memc[sformat], SZ_FNAME)) {
+		call s_setwcs (mw, 1)
+		if (streq (Memc[sformat], "onedspec"))
+		    call smw_onedspec (im, mw)
+		else
+		    call smw_oldms (im, mw)
+
+	    # Old "onedspec" format or other 1D image.
+	    } else if (wcsdim == 1) {
+		call s_setwcs (mw, 1)
+		call smw_onedspec (im, mw)
+
+	    # N-dimensional image.
+	    } else
+		call smw_nd (im, mw)
+	}
+
+	call sfree (sp)
+	return (mw)
+end

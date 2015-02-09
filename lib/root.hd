@@ -1,0 +1,5 @@
+# Root help directory.  This dummy package is necessary in order to have
+# a package appear as a module, so that the user can type "help <package>"
+# (with the <package> given as a task).
+
+_sptable	pkg = sptable$lib/root1.hd

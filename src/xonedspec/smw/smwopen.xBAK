@@ -1,0 +1,136 @@
+include	<error.h>
+include	<smw.h>
+
+
+# SMW_OPEN -- Open SMW structure.
+# The basic MWCS pointer and a template SMW pointer or spectrum is input
+# and the SMW pointer is returned in its place.
+
+procedure smw_open (mw, smw1, s)
+
+pointer	mw		#U MWCS pointer input and SMW pointer output
+pointer	smw1		#I Template SMW pointer
+pointer	s		#I Spectrum pointer
+
+int	i, nspec, nmw, sfmt, strdic()
+pointer	sp, sformat, smw, s_mwopens(), mw_sctran(), mw_newcopy()
+errchk	smw_daxis, smw_sax, mw_sctran, mw_gwattrs
+
+begin
+	call smark (sp)
+	call salloc (sformat, SZ_FNAME, TY_CHAR)
+
+	iferr {
+	    call mw_gwattrs (mw, 0, "sformat", Memc[sformat], SZ_FNAME)
+	    sfmt = strdic (Memc[sformat], Memc[sformat], SZ_FNAME,
+		"|equispec|multispec|onedspec|")
+	} then {
+	    if (smw1 != NULL)
+		sfmt = SMW_FORMAT(smw1)
+	    else
+	        call erract (EA_ERROR)
+	}
+
+	switch (sfmt) {
+	case SMW_ND:
+	    call calloc (smw, SMW_LEN(1), TY_STRUCT)
+	    call malloc (SMW_APID(smw), SZ_LINE, TY_CHAR)
+	    SMW_FORMAT(smw) = sfmt
+	    SMW_DTYPE(smw) = INDEFI
+	    SMW_NMW(smw) = 1
+	    SMW_MW(smw,0) = mw
+
+	    call smw_daxis (smw, s, INDEFI, INDEFI, INDEFI)
+	    call smw_sax (smw, smw1, s)
+
+	case SMW_ES:
+	    call calloc (smw, SMW_LEN(1), TY_STRUCT)
+	    call malloc (SMW_APID(smw), SZ_LINE, TY_CHAR)
+	    SMW_FORMAT(smw) = sfmt
+	    SMW_DTYPE(smw) = INDEFI
+	    SMW_NMW(smw) = 1
+	    SMW_MW(smw,0) = mw
+
+	    call smw_sax (smw, smw1, s)
+
+	    nspec = SMW_NSPEC(smw)
+	    call calloc (SMW_APS(smw), nspec, TY_INT)
+	    call calloc (SMW_BEAMS(smw), nspec, TY_INT)
+	    call calloc (SMW_APLOW(smw), 2*nspec, TY_REAL)
+	    call calloc (SMW_APHIGH(smw), 2*nspec, TY_REAL)
+	    call calloc (SMW_APIDS(smw), nspec, TY_POINTER)
+	    if (SMW_PDIM(smw) > 1)
+		SMW_CTLP(smw) = mw_sctran (mw, "logical", "physical", 2)
+	    SMW_NSMW(smw) = SMW_NSPEC(smw)
+
+	case SMW_MS:
+	    call calloc (smw, SMW_LEN(1), TY_STRUCT)
+	    call malloc (SMW_APID(smw), SZ_LINE, TY_CHAR)
+	    SMW_FORMAT(smw) = sfmt
+	    SMW_DTYPE(smw) = INDEFI
+	    SMW_NMW(smw) = 1
+	    SMW_MW(smw,0) = mw
+
+	    call smw_sax (smw, smw1, s)
+
+	    nspec = SMW_NSPEC(smw)
+	    call calloc (SMW_APIDS(smw), nspec, TY_POINTER)
+	    if (SMW_PDIM(smw) > 1)
+		SMW_CTLP(smw) = mw_sctran (mw, "logical", "physical", 2)
+
+	    SMW_NSMW(smw) = SMW_NSPLIT
+	    nmw = 1 + (nspec - 1) / SMW_NSMW(smw)
+	    if (nmw > 1) {
+		call realloc (smw, SMW_LEN(nmw), TY_STRUCT)
+		call calloc (SMW_APS(smw), nspec, TY_INT)
+	    }
+	    do i = 1, nmw-1
+		SMW_MW(smw,i) = mw_newcopy (mw)
+	    SMW_NMW(smw) = nmw
+
+	case SMW_1D:
+	    nspec = S_NSPEC(s)
+
+	    call calloc (smw, SMW_LEN(nspec), TY_STRUCT)
+	    call malloc (SMW_APID(smw), SZ_LINE, TY_CHAR)
+	    SMW_FORMAT(smw) = SMW_1D
+	    SMW_DTYPE(smw) = INDEFI
+	    SMW_NMW(smw) = 1
+	    SMW_MW(smw,0) = mw
+
+	    if (smw1 != NULL)
+		call smw_sax (smw, smw1, s)
+	    else {
+		SMW_NSPEC(smw) = S_NSPEC(s)
+		SMW_NBANDS(smw) = S_NAUX(s)
+		SMW_LDIM(smw) = S_NDIM(s)
+		SMW_LAXIS(smw,1) = 1
+		SMW_LAXIS(smw,2) = 2
+		SMW_LAXIS(smw,3) = 3
+		SMW_LLEN(smw,1) = S_NDISP(s)
+		SMW_LLEN(smw,2) = S_NSPEC(s)
+		SMW_LLEN(smw,3) = S_NAUX(s)
+
+		SMW_PDIM(smw) = SMW_LDIM(smw)
+		do i = 1, 3
+		    SMW_PAXIS(smw,i) = SMW_LAXIS(smw,i)
+
+		call strcpy (S_TITLE(s), Memc[SMW_APID(smw)], SZ_LINE)
+	    }
+
+	    nspec = SMW_NSPEC(smw)
+	    call calloc (SMW_APIDS(smw), nspec, TY_POINTER)
+	    call calloc (SMW_APS(smw), nspec, TY_INT)
+	    if (SMW_PDIM(smw) > 1)
+		SMW_CTLP(smw) = mw_sctran (mw, "logical", "physical", 2)
+
+	    SMW_NSMW(smw) = 1
+	    SMW_NMW(smw) = nspec
+	    do i = 2, nspec
+		SMW_MW(smw,i-1) = s_mwopens (s, i)
+	}
+
+	mw = smw
+	    
+	call sfree (sp)
+end

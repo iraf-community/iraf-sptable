@@ -1,0 +1,12 @@
+# Global environment definitions for the SPTABLE packages.
+
+set	pkglibs		= "sptable$bin(arch)/,sptable$lib/,noao$lib/"
+set	spbin		= "sptable$bin(arch)/"
+set	splib		= "sptable$lib/"
+set	spsrc		= "sptable$src/"
+
+set	xonedspec	= spsrc$xonedspec/
+set	xrv		= spsrc$xrv/
+#set	xapextract	= spsrc$xapextract/
+
+keep

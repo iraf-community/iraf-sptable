@@ -1,0 +1,24 @@
+
+							September 15, 2014
+
+
+    This package contains the versions of the ONEDSPEC and RV packages
+modified to support tabular spectra.  To avoid confusion with package
+loading, these packages are renamed XONEDSPEC and XRV respectively.
+
+Important directories include:
+
+    lib			Package library.  Changes to the noao$lib files
+			have been merged.
+    src/mwcs		MWCS library source.  Changes from the v2.16 
+			sys$mwcs have been merged into source, but this
+			'mwcs' library is not installed in the dev IRAF.
+    src/xonedspec	ONEDSPEC package source.
+    src/xrv		RV package source.
+
+The SPTABLE package will not yet build completely due to work still required
+in the package code.  Additionally the 'mwcs' library is in a custom version
+of libex.a, this is considered temporary until the sys$mwcs library is
+updated.  
+
+

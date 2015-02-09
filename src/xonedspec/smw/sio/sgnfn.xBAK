@@ -1,0 +1,329 @@
+# Copyright(c) 1986 Association of Universities for Research in Astronomy Inc.
+
+include	<syserr.h>
+include	<ctype.h>
+include	<s.h>
+include	"tb.h"
+
+.help s_gnfn
+.nf --------------------------------------------------------------------------
+S_GNFN -- Template expansion for spectrum parameter keywords.
+
+	list =	s_ofnl[su] (s, template)	# open list
+	nch =	    s_gnfn (s, outstr, maxch)	# get next parameter name
+		    s_cfnl (s)			# close list
+
+S_OFNLS opens the list sorted, whereas S_OFNLU opens it unsorted.  Both std.
+and user header keywords are included in the list.
+.endhelp ---------------------------------------------------------------------
+
+define	MAX_PARS	1024
+define	SZ_SBUF		8192
+define	LEN_FNSTRUCT	(10+MAX_PARS)
+
+define	PN_NENTRIES	Memi[$1]	# number of parameter names in list
+define	PN_NEXT		Memi[$1+1]	# next string to be returned
+define	PN_SBUF		Memi[$1+2]	# pointer to string buffer
+			# open
+define	PN_STRP		Memi[$1+10+$2-1]	# array of str ptrs
+define	PN_PARNAME	Memc[PN_STRP($1,$2)]	# reference a string
+
+
+# S_GNFN -- Get the next parameter name matching the given template from a
+# spectrum parameter database.  Sorting of the parameter list is optional.  A
+# prior call to S_OFNL[SU] is necessary to open the sorted or unsorted list.
+
+int procedure s_gnfn (s, fn, outstr, maxch)
+
+pointer	s			# spectrum descriptor
+pointer	fn			# parameter name list descriptor
+char	outstr[ARB]		# output string
+int	maxch
+
+int	strnum
+int	imgnfn(), gstrcpy()
+
+begin
+	if (S_IM(s) != NULL)
+	    return (imgnfn (fn, outstr, maxch))
+
+	strnum = PN_NEXT(fn)
+	if (strnum > PN_NENTRIES(fn))
+	    return (EOF)
+	PN_NEXT(fn) = strnum + 1
+
+	return (gstrcpy (PN_PARNAME(fn,strnum), outstr, maxch))
+end
+
+
+# S_OFNLS -- Open a sorted parameter name list.
+
+pointer procedure s_ofnls (s, template)
+
+pointer	s			# spectrum descriptor
+char	template[ARB]		# parameter name template
+pointer	s_ofnl()
+
+begin
+	return (s_ofnl (s, template, YES))
+end
+
+
+# S_OFNLU -- Open an unsorted parameter name list.
+
+pointer procedure s_ofnlu (s, template)
+
+pointer	s			# spectrum descriptor
+char	template[ARB]		# parameter name template
+pointer	s_ofnl()
+
+begin
+	return (s_ofnl (s, template, NO))
+end
+
+
+# S_CFNL -- Close the spectrum parameter name list and return all associated
+# storage.
+
+procedure s_cfnl (s, fn)
+
+pointer	s			# spectrum descriptor
+pointer	fn			# parameter name list descriptor
+
+begin
+	if (S_IM(s) != NULL)
+	    call imcfnl (fn)
+	else {
+	    call mfree (PN_SBUF(fn), TY_CHAR)
+	    call mfree (fn, TY_STRUCT)
+	}
+end
+
+
+# S_FNL -- Open an header parameter name list, either sorted or unsorted.
+# A template is a list of patterns delimited by commas.
+
+pointer procedure s_ofnl (s, template, sort)
+
+pointer	s			# spectrum descriptor
+char	template[ARB]		# parameter name template
+int	sort			# sort flag
+
+bool	escape
+int	tp, nstr, ch, junk, first_string, nstrings, nmatch, i, dtype
+pointer	sp, ip, op, fn, kwname, sbuf, pattern, patcode, nextch
+int	patmake(), patmatch(), strlen()
+pointer	imofnl()
+
+begin
+	if (S_IM(s) != NULL)
+	    return (imofnl (S_IM(s), template, sort))
+
+	call smark (sp)
+	call salloc (kwname, SZ_FNAME, TY_CHAR)
+	call salloc (pattern, SZ_FNAME, TY_CHAR)
+	call salloc (patcode, SZ_LINE,  TY_CHAR)
+
+	# Allocate parameter list descriptor.
+	call calloc (fn, LEN_FNSTRUCT, TY_STRUCT)
+	call malloc (sbuf, SZ_SBUF, TY_CHAR)
+
+	PN_SBUF(fn) = sbuf
+	nextch = sbuf
+	nstr = 0
+	tp = 1
+
+	# Extract each comma delimited template, expand upon table header
+	# parameter list, sort if desired, and add strings to list.
+
+	while (template[tp] != EOS && template[tp] != '\n') {
+	    # Advance to next parameter.
+	    while (IS_WHITE(template[tp]) || template[tp] == ',')
+		tp = tp + 1
+
+	    # Extract pattern.  Enclose pattern in ^{} so that the match will
+	    # occur only at the beginning of each line and will be case
+	    # insensitive (req'd for FITS format).
+
+	    op = pattern
+	    Memc[op] = '^'
+	    op = op + 1
+	    Memc[op] = '{'
+	    op = op + 1
+
+	    # A parameter name of the form "$", "$x", etc. is not matched
+	    # against the actual spectrum parameter list, but is included in
+	    # the output parameter list as a literal.
+
+	    ch = template[tp]
+	    escape = (ch == '$')
+
+	    while (! (IS_WHITE(ch) || ch == '\n' || ch == ',' || ch == EOS)) {
+		# Map "*" into "?*".
+		if (ch == '*') {
+		    Memc[op] = '?'
+		    op = op + 1
+		}
+
+		Memc[op] = ch
+		op = op + 1
+		tp = tp + 1
+		ch = template[tp]
+	    }
+
+	    Memc[op] = '}'
+	    op = op + 1
+	    Memc[op] = EOS
+
+	    # If the pattern is a literal, put it in the output list without
+	    # matching it against the parameter list.
+
+	    if (escape) {
+		# Omit the leading "^{" and the trailing "}".
+		ip = pattern + 2
+		op = op - 1
+		Memc[op] = EOS
+		call s_putkey (Memc[ip], PN_STRP(fn,1), nstr, nextch, sbuf)
+
+	    } else {
+		# Encode pattern.
+		junk = patmake (Memc[pattern], Memc[patcode], SZ_LINE)
+
+		# Scan parameters and extract all parameter names matching the
+		# pattern.  Mark number of first string for the sort.
+
+		first_string = nstr + 1
+
+		# First find any standard header keywords matching the pattern.
+		call s_stdkeys (s, Memc[patcode], PN_STRP(fn,1), nstr,
+		    nextch, sbuf)
+
+		# Now scan the user area.
+		do i = 1, ARB {
+		    call tbhgnp (TB_TP(S_TB(s)), i, Memc[kwname], dtype,
+			TB_SBUF(S_TB(s)))
+		    if (Memc[kwname] == EOS)
+			break
+
+		    # Check for a match.
+		    if (Memc[kwname] != EOS) {
+			# Put key in list if it matches.
+			nmatch = patmatch (Memc[kwname], Memc[patcode]) - 1
+			if (nmatch > 0 && nmatch == strlen(Memc[kwname]))
+			    call s_putkey (Memc[ip],
+				PN_STRP(fn,1), nstr, nextch, sbuf)
+		    }
+		}
+
+		# Sort the newly added keywords.
+		nstrings = nstr - first_string + 1
+		if (sort == YES && nstrings > 1)
+		    call strsrt (PN_STRP(fn,first_string), Memc, nstrings)
+	    }
+	}
+
+	PN_NENTRIES(fn) = nstr
+	PN_NEXT(fn)     = 1
+
+	call sfree (sp)
+	return (fn)
+end
+
+
+# S_STDKEYS -- Match a pattern (encoded) against the list of standard header
+# keywords, both with and without the "i_" prefix.  Add the full name (with i_
+# prefix) of each name matched to the keyword list.
+
+procedure s_stdkeys (s, patcode, strp, nstr, nextch, sbuf)
+
+pointer	s			# spectrum descriptor
+char	patcode[ARB]		# encoded pattern
+pointer	strp[ARB]		# array of string pointers
+int	nstr			# current number of strings
+pointer	nextch			# next available char in string buffer
+pointer	sbuf			# string buffer
+
+pointer	sp, op, key
+bool	validpar, match
+int	ip, index, nmatch
+int	patmatch(), strlen()
+
+string	keywords "|ctime|history|limtime|maxpixval|minpixval|mtime|naxis\
+|naxis1|naxis2|naxis3|naxis4|naxis5|naxis6|naxis7|pixfile|pixtype|title|"
+errchk	s_putkey
+
+begin
+	call smark (sp)
+	call salloc (key, SZ_FNAME, TY_CHAR)
+
+	call strcpy ("i_", Memc[key], SZ_FNAME)
+	index = 1
+
+	for (ip=2;  keywords[ip] != EOS;  ip=ip+1) {
+	    # Do not put dimensions NAXIS1, NAXIS2, etc. higher than the
+	    # actual image dimension into the matched list.
+
+	    validpar = true
+	    if (index >= 8 && index <= 14)
+		validpar = (index - 7 <= S_NDIM(s))
+
+	    # Extract keyword into buffer, after the "i_".
+	    for (op=key+2;  keywords[ip] != '|';  op=op+1) {
+		Memc[op] = keywords[ip]
+		ip = ip + 1
+	    }
+	    Memc[op] = EOS
+
+	    if (validpar) {
+		nmatch = patmatch (Memc[key], patcode) - 1
+		match = (nmatch > 0 && nmatch == strlen(Memc[key]))
+		if (!match) {
+		    nmatch = patmatch (Memc[key+2], patcode) - 1
+		    match = (nmatch > 0 && nmatch == strlen(Memc[key+2]))
+		}
+		if (match)
+		    call s_putkey (Memc[key], strp, nstr, nextch, sbuf)
+	    }
+
+	    index = index + 1
+	}
+
+	call sfree (sp)
+end
+
+
+# S_PUTKEY -- Put a keyword into the keyword list.
+
+procedure s_putkey (key, strp, nstr, nextch, sbuf)
+
+char	key[ARB]		# keyword name (etc.)
+pointer	strp[ARB]		# array of string pointers
+int	nstr			# current number of strings
+pointer	nextch			# next available char in string buffer
+pointer	sbuf			# string buffer
+
+int	ch, ip
+errchk	syserr
+
+begin
+	# Append keyword to the string buffer.
+	nstr = nstr + 1
+	if (nstr > MAX_PARS)
+	    call syserr (SYS_IMFNOVFL)
+	strp[nstr] = nextch
+
+	ip = 1
+	ch = key[ip]
+
+	while (ch != '=' && ch != ' ' && ch != EOS) {
+	    Memc[nextch] = ch
+	    nextch = nextch + 1
+	    if (nextch >= sbuf + SZ_SBUF)
+		call syserr (SYS_IMFNOVFL)
+	    ip = ip + 1
+	    ch = key[ip]
+	}
+
+	Memc[nextch] = EOS
+	nextch = nextch + 1
+end

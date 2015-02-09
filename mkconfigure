@@ -1,0 +1,9 @@
+setenv sptable ${extern}sptable/
+setenv PKGENV sptable
+setenv IRAFULIB ${sptable}lib/
+
+alias	mksplib "(cd $sptable/src/xonedspec; mkpkg xflags='-cqx' smw)"
+alias	mksptable "(cd $sptable/src/xonedspec; mkpkg xflags='-cqx' lflags='-qxz' relink install)"
+alias	mksptabrv "(cd $sptable/src/xrv; mkpkg xflags='-cqx' lflags='-qxz' relink install)"
+
+set	cdpath = ($sptable $cdpath)

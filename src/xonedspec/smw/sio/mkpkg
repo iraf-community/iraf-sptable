@@ -1,0 +1,50 @@
+# SPTABLES Interface.
+
+#$call	test
+#$exit
+
+update:
+	$checkout libsmw.a ../
+	$update   libsmw.a
+	$checkin  libsmw.a ../
+	;
+
+#test:
+#	$omake	simhdr.x
+#	$link	simhdr.o -o test.e
+#	;
+
+libsmw.a:
+	instmap.x	<error.h>
+	saccf.x		<s.h> tb.h
+	saddd.x		<s.h> tb.h
+	saddi.x		<error.h> <s.h> tb.h
+	saddr.x		<s.h> tb.h
+	sastr.x		<error.h> <s.h> tb.h
+	sdelf.x		<s.h> tb.h
+	sflush.x	<s.h>
+	sgap.x		<s.h> tb.h
+	sgetd.x		<s.h> tb.h
+	sgeti.x		<s.h> tb.h
+	sgetr.x		<s.h> tb.h
+	sgkey.x		<s.h>
+	sgnfn.x		<s.h> tb.h
+	sgs3r.x		<s.h> tb.h <tbset.h>
+	sgsr.x		<s.h> tb.h <tbset.h>
+	sgstr.x		<s.h> tb.h
+	simhdr.x	<imhdr.h> <imio.h> <tbset.h>
+	skeymap.x	<error.h>
+	smapim.x	<error.h> <imhdr.h> <imio.h> <s.h> tb.h
+	smaptb.x	<error.h> <imhdr.h> <imio.h> <pkg/rg.h> <s.h> tb.h\
+			<tbset.h>
+	smap.x		<error.h>
+	smwopens.x	<smw.h> tb.h <tbset.h>
+	smwsaves.x	<s.h>
+	smwsax.x	<mwset.h> <smw.h>
+	sps3r.x		<s.h> tb.h
+	spsr.x		<s.h> tb.h
+	sseti.x		<imset.h> <s.h>
+	ssetnew.x	<error.h> <imhdr.h> <imio.h> <s.h>
+	ssetwcs.x	<mwset.h>
+	sunmap.x	<s.h> tb.h
+	;

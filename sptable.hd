@@ -1,0 +1,16 @@
+# Help directory for the SPTABLE packages.
+
+$xonedspec	= "./src/xonedspec/"
+$xrv		= "./src/xrv/"
+
+# Define help files for the packages.
+
+sptod		men = xonedspec$xonedspec.men,
+		hlp = ..,
+		pkg = xonedspec$xonedspec.hd,
+		src = xonedspec$xonedspec.cl
+
+sptrv		men = xrv$xrv.men,
+		hlp = ..,
+		pkg = xrv$xrv.hd,
+		src = xrv$xrv.cl

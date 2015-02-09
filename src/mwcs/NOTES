@@ -1,0 +1,46 @@
+mwsctran.x
+    Reported in mail.  (5/4, Valdes)
+
+mkpkg
+wfpc.x	+
+wfinit.x
+    Added new function driver.  (5/4, Valdes)
+
+iwewcs.x
+    Modified to recognize PC CTYPEs.  (5/9, Valdes)
+
+iwewcs.x
+iwctype.x
+imwcs.h
+iwrfits.x
+    Added TY_PV and TY_PC to the WCS cards recognized.  When the cards
+    are parsed the new structure values IW_PVMAX and IW_PCMAX are
+    set.  (5/9, Valdes)
+
+iwctype.x
+imwcs.h
+mwsaveim.x
+iwewcs.x
+    Added SZ_CTYPE to define the maximum size of the CTYPE value and
+    set it to 19 (the same size already allowed in the descriptor).
+    Previously the CTYPE value was limited to 8 characters.
+    (5/10, Valdes)
+
+mkpkg
+mwspv.x	+
+mwgpv.x	+
+mwspc.x	+
+mwgpc.x	+
+mwnewcopy.x
+mwcs.h
+    Routines to set and put PV and PC coefficients.  New elements,
+    WCS_NPVC, WCS_PVC, WCS_NPC, and WCS_PC, were added following the same
+    methods as the sampled arrays.  (5/10, Valdes)
+
+iwfind.x
+    Modified to deal with PV and PC index of 0.  (5/14, Valdes)
+
+mwsaveim.x
+    Modified to support the PC coordinate types and to output any PV
+    and PC values.
+
