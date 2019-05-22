@@ -120,7 +120,7 @@ will be located (needed in order to build the package from the source
 code).  Note that pathnames must end with '/'.  For example:
 
 .nf
-    % setenv nfextern /local/nfextern/
+    % export nfextern=/local/nfextern/
 .fi
 
 In your login.cl or loginuser.cl file make the following definitions
@@ -136,13 +136,13 @@ somewhere before the "keep" statement.
 
 If you will be compiling the package, as opposed to installing a binary
 distribution, then you need to define various environment variables.
-The following is for Unix/csh which is the main supported environment.
+The following is for Unix which is the main supported environment.
 
 .nf
     # Example
-    % setenv iraf /iraf/iraf/             # Path to IRAF root (example)
-    % source $iraf/unix/hlib/irafuser.csh # Define rest of environment
-    % setenv IRAFARCH redhat              # IRAF architecture
+    % export iraf=/iraf/iraf/            # Path to IRAF root (example)
+    % source $iraf/unix/hlib/irafuser.sh # Define rest of environment
+    % export IRAFARCH=linux              # IRAF architecture
 .fi
 
 where you need to supply the appropriate path to the IRAF installation root

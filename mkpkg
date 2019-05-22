@@ -12,7 +12,7 @@ update:
 arch:					# show current float option
 showfloat:
 	$verbose off
-	!$(hlib)/mkfloat.csh
+	!$(hlib)/mkfloat
 	;
 generic:				# generic installation (no bin)
 	$ifnfile (bin.generic)
@@ -20,7 +20,7 @@ generic:				# generic installation (no bin)
 	$endif
 	$verbose off
 	$set DIRS = "lib src"
-	!$(hlib)/mkfloat.csh generic -d $(DIRS)
+	!$(hlib)/mkfloat generic -d $(DIRS)
 	;
 
 freebsd:                                # install FreeBSD binaries
@@ -29,7 +29,7 @@ freebsd:                                # install FreeBSD binaries
 	$endif
         $verbose off
         $set DIRS = "lib src"
-        !$(hlib)/mkfloat.csh freebsd -d $(DIRS)
+        !$(hlib)/mkfloat freebsd -d $(DIRS)
         ;
 linux:                                  # install Linux 32-bit binaries
 	$ifnfile (bin.linux)
@@ -37,7 +37,7 @@ linux:                                  # install Linux 32-bit binaries
 	$endif
         $verbose off
         $set DIRS = "lib src"
-        !$(hlib)/mkfloat.csh linux -d $(DIRS)
+        !$(hlib)/mkfloat linux -d $(DIRS)
         ;
 linux64:                                # install x86_64 binaries
 	$ifnfile (bin.linux64)
@@ -45,7 +45,7 @@ linux64:                                # install x86_64 binaries
 	$endif
         $verbose off
         $set DIRS = "lib src"
-        !$(hlib)/mkfloat.csh linux64 -d $(DIRS)
+        !$(hlib)/mkfloat linux64 -d $(DIRS)
         ;
 macosx:                                 # install Mac OS X (PPC) binaries
 	$ifnfile (bin.macosx)
@@ -53,7 +53,7 @@ macosx:                                 # install Mac OS X (PPC) binaries
 	$endif
         $verbose off
         $set DIRS = "lib src"
-        !$(hlib)/mkfloat.csh macosx -d $(DIRS)
+        !$(hlib)/mkfloat macosx -d $(DIRS)
         ;
 macintel:                               # install Mac OS X (Intel) binaries
 	$ifnfile (bin.macintel)
@@ -61,7 +61,7 @@ macintel:                               # install Mac OS X (Intel) binaries
 	$endif
         $verbose off
         $set DIRS = "lib src"
-        !$(hlib)/mkfloat.csh macintel -d $(DIRS)
+        !$(hlib)/mkfloat macintel -d $(DIRS)
         ;
 cygwin:                                 # install Cygwin binaries
 	$ifnfile (bin.cygwin)
@@ -69,7 +69,7 @@ cygwin:                                 # install Cygwin binaries
 	$endif
         $verbose off
         $set DIRS = "lib src"
-        !$(hlib)/mkfloat.csh cygwin -d $(DIRS)
+        !$(hlib)/mkfloat cygwin -d $(DIRS)
         ;
 redhat:                                 # install Redhat Linux binaries
 	$ifnfile (bin.redhat)
@@ -77,7 +77,7 @@ redhat:                                 # install Redhat Linux binaries
 	$endif
         $verbose off
         $set DIRS = "lib src"
-        !$(hlib)/mkfloat.csh redhat -d $(DIRS)
+        !$(hlib)/mkfloat redhat -d $(DIRS)
         ;
 sparc:					# install sparc binaries
 	$ifnfile (bin.sparc)
@@ -85,7 +85,7 @@ sparc:					# install sparc binaries
 	$endif
 	$verbose off
 	$set DIRS = "lib src"
-	!$(hlib)/mkfloat.csh sparc -d $(DIRS)
+	!$(hlib)/mkfloat sparc -d $(DIRS)
 	;
 ssun:					# install Sun/Solaris binaries
 	$ifnfile (bin.ssun)
@@ -93,7 +93,7 @@ ssun:					# install Sun/Solaris binaries
 	$endif
 	$verbose off
 	$set DIRS = "lib src"
-	!$(hlib)/mkfloat.csh ssun -d $(DIRS)
+	!$(hlib)/mkfloat ssun -d $(DIRS)
 	;
 sunos:                                  # install SunOS (Solaris x86) binaries
 	$ifnfile (bin.sunos)
@@ -101,7 +101,7 @@ sunos:                                  # install SunOS (Solaris x86) binaries
 	$endif
         $verbose off
         $set DIRS = "lib src"
-        !$(hlib)/mkfloat.csh sunos -d $(DIRS)
+        !$(hlib)/mkfloat sunos -d $(DIRS)
         ;
 noP2R:
 	!find . -type f -name '*[xh]' -exec grep -q P2R {} \; -exec sed -i -e 's+P2R++g' {} \;
