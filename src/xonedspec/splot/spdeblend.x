@@ -785,39 +785,3 @@ begin
 	ng = 0
 	call sfree (sp)
 end
-
-
-# GASDEV -- Return a normally distributed deviate with zero mean and unit
-# variance.  The method computes two deviates simultaneously.
-#
-# Copyright(c) 2017 Anastasia Galkin
-# Reference: G. E. P. Box and Mervin E. Muller, A Note on the Generation of
-#            Random Normal Deviates, The Annals of Mathematical Statistics
-#            (1958), Vol. 29, No. 2 pp. 610–611
-
-real procedure gasdev (seed)
-
-long	seed
-
-int	count
-data	count/0/
-
-real	u1, u2, x
-real	urand()
-
-begin
-	if (count == 0) {
-		repeat {
-			u1 = 2 * urand (seed) - 1.
-		} until (u1 > 0)
-		repeat {
-			u2 = 2 * urand (seed) - 1.
-		} until (u1 > 0)
-		x = sqrt(-2 * log(u1)) * cos(2*PI*u2);
-		count = 1
-	} else {
-		x = sqrt(-2 * log(u1)) * sin(2*PI*u2);
-		count = 0
-	}
-	return (x)
-end
